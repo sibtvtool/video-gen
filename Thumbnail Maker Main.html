@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ur"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SIBT Thumbnail Finder</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root{--bg:#0f1220;--card:#181c30;--line:#2a2f4d;--txt:#eef0ff;--mut:#9aa0c8;--acc:#ff4d4d;--ok:#2ecc71}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,Segoe UI,sans-serif;background:var(--bg);color:var(--txt);padding-bottom:84px}
+header{padding:14px;text-align:center;border-bottom:1px solid var(--line)}
+header h1{margin:0;font-size:22px}header h1 span{color:var(--acc)}header p{margin:5px 0 0;color:var(--mut);font-size:12px}
+.wrap{max-width:1250px;margin:0 auto;padding:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:4px}
+input,select,button{font:inherit}
+input[type=text],input[type=password],input[type=number],select{width:100%;padding:11px;border-radius:8px;border:1px solid var(--line);background:#0f1220;color:var(--txt)}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:10px 0}
+button{cursor:pointer;border:0;border-radius:8px;padding:11px 14px;color:#fff;background:#4d8bff;font-weight:600}
+button.red{background:var(--acc)}button.green{background:var(--ok)}button.gray{background:#363c61}button:disabled{opacity:.5}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.status{font-size:13px;color:var(--mut);margin-top:8px;min-height:18px}
+details summary{cursor:pointer;color:var(--mut);font-size:13px}small{color:var(--mut)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+.item{background:var(--card);border:2px solid var(--line);border-radius:10px;overflow:hidden;position:relative}
+.item.sel{border-color:var(--ok)}
+.item img{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;background:#000;cursor:pointer}
+.chk{position:absolute;top:6px;right:6px;width:22px;height:22px;accent-color:var(--ok)}
+.meta{padding:5px 7px;font-size:11px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dl{position:absolute;top:6px;left:6px;padding:3px 9px;font-size:14px;color:#fff;background:rgba(0,0,0,.7);border-radius:6px;cursor:pointer}
+.fab{position:fixed;left:0;right:0;bottom:0;background:#12162a;border-top:1px solid var(--line);padding:10px;display:none;gap:8px;z-index:5}
+.fab button{flex:1;font-size:15px;padding:13px 8px}
+.prog{height:6px;background:#0f1220;border-radius:4px;overflow:hidden;margin-top:8px;display:none}.prog div{height:100%;width:0;background:var(--ok)}
+</style></head><body>
+<header><h1>🎯 SIBT <span>Thumbnail</span> Finder</h1><p>Sirf YouTube thumbnails · HD 16:9 · ek click mein sab download</p></header>
+<div class="wrap">
+ <div class="card"><details id="keybox"><summary>🔑 YouTube API Key (har device par ek dafa)</summary>
+  <div style="margin-top:10px"><label>API Key</label><input type="password" id="apikey" placeholder="AIza...">
+  <div class="bar" style="margin-top:8px"><button class="gray" id="savekey">Save Key</button></div></div></details></div>
+ <div class="card">
+  <label>Video / Song ka Title</label>
+  <input type="text" id="title" placeholder="e.g. Tum Hi Ho Arijit Singh">
+  <div class="row">
+   <div><label>Kitni thumbnails (min 40)</label><input type="number" id="count" value="40" min="40" max="120"></div>
+   <div><label>Category</label><select id="cat">
+     <option value="song">🎵 Song / Music</option><option value="story">📖 Story / Kids</option>
+     <option value="gaming">🎮 Gaming</option><option value="tutorial">🛠 Tutorial</option><option value="vlog">📹 Vlog / General</option></select></div>
+   <div><label>Results</label><select id="fresh"><option value="1">Hamesha naye</option><option value="0">Koi bhi</option></select></div>
+   <div><label>Ek channel se max</label><input type="number" id="perch" value="2" min="1" max="10"></div>
+  </div>
+  <div class="bar"><button class="red" id="go">🔍 Thumbnails Dhondo</button><button class="gray" id="reset">History reset</button></div>
+  <div class="status" id="status"></div>
+  <div class="prog" id="prog"><div></div></div>
+ </div>
+ <div class="grid" id="grid"></div>
+</div>
+<div class="fab" id="fab">
+ <button class="green" id="zipall">⬇ Download All</button>
+ <button class="gray" id="zipsel">⬇ Selected</button>
+ <button class="gray" id="selall">Sab select</button>
+</div>
+
+<script>
+const $=i=>document.getElementById(i);
+const st=t=>$('status').textContent=t;
+const LS={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+let API=LS.get('sibt_key','');$('apikey').value=API;if(!API)$('keybox').open=true;
+$('savekey').onclick=()=>{API=$('apikey').value.trim();LS.set('sibt_key',API);st('Key save ho gayi ✅')};
+
+const VARIANTS={
+ song:['','official video','official music video','lyrics','lyric video','live','cover','remix','full song','audio','slowed reverb','acoustic','unplugged','mashup','4k'],
+ story:['','story','kids story','animated story','cartoon','bedtime story','animation','3d animation','moral story','for kids','full episode','pixar style'],
+ gaming:['','gameplay','walkthrough','funny moments','highlights','review','best moments','challenge','tips and tricks','montage'],
+ tutorial:['','tutorial','how to','step by step','for beginners','complete guide','tips','explained','full course'],
+ vlog:['','vlog','daily vlog','trip','challenge','review','reaction','best moments','explained','top 10']};
+const ORDERS=['relevance','viewCount','rating','relevance','viewCount','date'];
+const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
+
+async function yt(ep,params){
+ const u=new URL('https://www.googleapis.com/youtube/v3/'+ep);u.search=new URLSearchParams({...params,key:API});
+ const r=await fetch(u);const j=await r.json();
+ if(!r.ok)throw new Error(j.error&&j.error.message||('Error '+r.status));return j;
+}
+const dur=s=>{const m=/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(s||'');return m?(+m[1]||0)*3600+(+m[2]||0)*60+(+m[3]||0):0};
+
+// Thumbnail-friendly check: asli HD (maxres) + koi kali patti (shorts/vertical/letterbox) nahi
+function loadImg(id){
+ return new Promise(res=>{
+  const im=new Image();im.crossOrigin='anonymous';
+  const to=setTimeout(()=>res(null),9000);
+  im.onload=()=>{clearTimeout(to);res(im)};
+  im.onerror=()=>{clearTimeout(to);res(null)};
+  im.src=`https://i.ytimg.com/vi/${id}/maxresdefault.jpg`;
+ });
+}
+function goodThumb(im){
+ if(!im||im.naturalWidth<1200||im.naturalHeight<650)return false;
+ if(Math.abs(im.naturalWidth/im.naturalHeight-16/9)>0.05)return false;
+ try{
+  const W=64,H=36,c=document.createElement('canvas');c.width=W;c.height=H;
+  const x=c.getContext('2d');x.drawImage(im,0,0,W,H);const d=x.getImageData(0,0,W,H).data;
+  const mean=(x0,x1,y0,y1)=>{let s=0,n=0;for(let y=y0;y<y1;y++)for(let xx=x0;xx<x1;xx++){const i=(y*W+xx)*4;s+=(d[i]+d[i+1]+d[i+2])/3;n++}return s/n};
+  const centre=mean(16,48,9,27);
+  if(mean(0,6,0,H)<8&&mean(W-6,W,0,H)<8&&centre>25)return false; // side kali patti (vertical/shorts)
+  if(mean(0,W,0,4)<8&&mean(0,W,H-4,H)<8&&centre>25)return false;  // upar-neeche kali patti
+ }catch(e){}
+ return true;
+}
+
+let R=[];
+function addCard(x){
+ const i=R.length;R.push(x);x.sel=false;
+ const d=document.createElement('div');d.className='item';
+ d.innerHTML='<img alt=""><input type="checkbox" class="chk"><a class="dl">⬇</a><div class="meta"></div>';
+ const im=d.querySelector('img');im.src=`https://i.ytimg.com/vi/${x.id}/maxresdefault.jpg`;
+ d.querySelector('.meta').textContent=x.title;
+ const c=d.querySelector('.chk');x.t=v=>{x.sel=v;c.checked=v;d.classList.toggle('sel',v)};
+ c.onchange=()=>x.t(c.checked);im.onclick=()=>x.t(!x.sel);
+ d.querySelector('.dl').onclick=async e=>{e.stopPropagation();try{save(await getBlob(x),fname(x,i))}catch(err){window.open(im.src,'_blank')}};
+ $('grid').appendChild(d);$('fab').style.display='flex';
+ $('zipall').textContent='⬇ Download All ('+R.length+')';
+}
+const fname=(x,i)=>String(i+1).padStart(2,'0')+'_'+x.id+'.jpg';
+async function getBlob(x){const r=await fetch(`https://i.ytimg.com/vi/${x.id}/maxresdefault.jpg`);if(!r.ok)throw 0;return r.blob()}
+function save(b,n){const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=n;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500)}
+
+$('go').onclick=async()=>{
+ const title=$('title').value.trim();
+ if(!title)return st('Pehle title likho.');
+ if(!API){$('keybox').open=true;return st('Pehle API key lagao (upar).')}
+ const want=Math.max(40,+$('count').value||40),perch=Math.max(1,+$('perch').value||2);
+ const seen=new Set(LS.get('sibt_seen',[])),fresh=$('fresh').value==='1';
+ $('go').disabled=true;$('grid').innerHTML='';$('fab').style.display='none';R=[];
+ const vars=shuffle([...VARIANTS[$('cat').value]]);let vi=0,searches=0;
+ const tried=new Set(),chCount={};
+ try{
+  while(R.length<want&&searches<10){
+   // 1) naye candidates lao
+   const pool=[];
+   const batch=Math.min(3,vars.length-vi);if(batch<=0)break;
+   for(let k=0;k<batch;k++){
+    const q=(title+' '+vars[vi++]).trim();searches++;
+    st(`Videos dhoond raha hoon… (${R.length}/${want} thumbnails ready)`);
+    const j=await yt('search',{part:'snippet',q,type:'video',maxResults:50,order:ORDERS[Math.floor(Math.random()*ORDERS.length)],safeSearch:'moderate',videoDefinition:'high'});
+    for(const it of j.items||[]){const id=it.id.videoId;if(!id||tried.has(id))continue;tried.add(id);
+     pool.push({id,title:it.snippet.title,ch:it.snippet.channelId,views:0,sec:0})}
+   }
+   if(!pool.length)continue;
+   // 2) views + duration (Shorts hatane ke liye)
+   for(let i=0;i<pool.length;i+=50){
+    try{const j=await yt('videos',{part:'statistics,contentDetails',id:pool.slice(i,i+50).map(p=>p.id).join(',')});
+     (j.items||[]).forEach(v=>{const p=pool.find(z=>z.id===v.id);if(p){p.views=+v.statistics.viewCount||0;p.sec=dur(v.contentDetails.duration)}})}catch(e){}
+   }
+   let arr=pool.filter(p=>p.sec>180); // 3 min se chhoti (Shorts) hata do
+   if(fresh)arr=arr.filter(p=>!seen.has(p.id)).concat(arr.filter(p=>seen.has(p.id)));
+   arr.forEach(x=>{const w=Math.pow(Math.log10(x.views+10),1.5);x.k=Math.pow(Math.random(),1/w)});
+   arr.sort((a,b)=>b.k-a.k);
+   // 3) HD + patti check, 6 saath
+   const queue=arr.filter(p=>(chCount[p.ch]||0)<perch);
+   const worker=async()=>{while(queue.length&&R.length<want){
+     const p=queue.shift();if((chCount[p.ch]||0)>=perch)continue;
+     const im=await loadImg(p.id);
+     if(R.length<want&&goodThumb(im)){chCount[p.ch]=(chCount[p.ch]||0)+1;addCard(p);
+      st(`Thumbnails check ho rahi hain… ${R.length}/${want}`)}}};
+   await Promise.all([1,2,3,4,5,6].map(worker));
+  }
+  LS.set('sibt_seen',[...new Set([...seen,...R.map(x=>x.id)])].slice(-6000));
+  st(R.length?`Done ✅ ${R.length} HD thumbnails mili.`+(R.length<want?' (Is title par itni hi suitable mili, title thora badal ke dobara try karo.)':''):'Kuch nahi mila. Title badal ke try karo.');
+ }catch(e){st('Error: '+e.message+(/quota/i.test(e.message)?' — aaj ka free quota khatam, kal try karo.':''))}
+ $('go').disabled=false;
+};
+
+async function zip(list){
+ if(!list.length)return st('Pehle kuch select karo.');
+ if(typeof JSZip==='undefined')return st('JSZip load nahi hua (internet check karo).');
+ const z=new JSZip(),p=$('prog'),bar=p.firstElementChild;p.style.display='block';bar.style.width='0';
+ let done=0,fail=0;const q=list.map(x=>[x,R.indexOf(x)]);
+ const worker=async()=>{while(q.length){const [x,i]=q.shift();
+  try{z.file(fname(x,i),await getBlob(x))}catch(e){fail++}
+  done++;bar.style.width=(done/list.length*100)+'%';st('Download ho rahi hain… '+done+'/'+list.length)}};
+ await Promise.all([1,2,3,4].map(worker));
+ st('ZIP bana raha hoon…');
+ save(await z.generateAsync({type:'blob'}),($('title').value.trim().replace(/[^\w\u0600-\u06FF]+/g,'_').slice(0,40)||'thumbs')+'_'+new Date().toISOString().slice(0,10)+'.zip');
+ st('ZIP ready ✅ '+(list.length-fail)+' thumbnails'+(fail?' ('+fail+' fail)':''));setTimeout(()=>p.style.display='none',1500);
+}
+$('zipall').onclick=()=>zip(R);
+$('zipsel').onclick=()=>zip(R.filter(x=>x.sel));
+$('selall').onclick=()=>{const all=R.every(x=>x.sel);R.forEach(x=>x.t(!all))};
+$('reset').onclick=()=>{LS.set('sibt_seen',[]);st('History reset ho gayi.')};
+$('title').addEventListener('keydown',e=>{if(e.key==='Enter')$('go').click()});
+</script></body></html>
